@@ -1,0 +1,7 @@
+# Production architecture note (Azure)
+
+I would deploy the React static bundle behind Azure Front Door and run the Node API as an Azure Container App. A managed environment with minimum one warm replica and an HTTP KEDA rule can scale to a tested maximum; long model runs would be submitted to Service Bus and handled by a worker Container App, so web requests stay short and retries are durable. Provisioning would be declarative Bicep through GitHub Actions with separate dev/stage/prod subscriptions, revision-based canaries, and private networking for data services.
+
+Microsoft Entra ID would provide enterprise OIDC login. The API would validate issuer, audience, tenant, and scopes on every request, then apply group/app-role checks to separate traveller and operator views. User and tenant IDs would be written into every audit row; prompts and model output would be redacted or encrypted according to retention policy. Secrets would live in Key Vault and be referenced with a user-assigned managed identity, never in deployment variables or source.
+
+Azure Database for PostgreSQL would replace the JSON repository, with Redis for short-lived request state and Service Bus for queued work. Azure Monitor Application Insights with the Azure Monitor OpenTelemetry distribution would capture traces, metrics, logs, exceptions, model latency, token usage, guardrail failures, queue age, and per-tenant rate-limit signals. Alerts would cover error rate, p95 latency, provider 429/5xx responses, queue age, and unexpected spend.

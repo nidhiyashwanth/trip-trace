@@ -1,0 +1,62 @@
+# Trip Trace
+
+Trip Trace is a small multi-agent trip planner built for the Senior Full Stack Engineer take-home. A user writes a plain-language brief such as “five days somewhere warm in Europe for under £1,500”. The API parses the brief, routes it through specialist agents, validates each result, synthesises a plan, and writes an audit record.
+
+## Submission status
+
+- Live URL: pending authenticated deployment verification.
+- Repository: this directory is ready to publish after local verification.
+- Default mode: deterministic demo, no API key and no paid service required.
+- Optional model mode: set `GEMINI_API_KEY` in an untracked `.env` file. The default model is `gemini-2.5-flash-lite`; set `GEMINI_MODEL` to change it.
+
+## Stack
+
+- React 18 + TypeScript + Vite 8 frontend.
+- Node.js + Express orchestration API.
+- Three separate agent contracts: Destination, Itinerary, and Budget.
+- JSON file audit repository behind a small persistence interface.
+- Optional Gemini JSON generation with application-level semantic guardrails.
+
+## Run locally
+
+Requirements: Node 20.19+ and pnpm 11+.
+
+```powershell
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:5173`. The API runs on `http://localhost:8787`.
+
+For a model-backed run, copy `.env.example` to `.env` and add a free Google AI Studio key. Do not commit `.env`.
+
+## Checks
+
+```powershell
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm verify
+```
+
+## Walkthrough
+
+1. Submit: `Plan five days somewhere warm in Europe under £1,500 with food, culture, and a relaxed pace. Do not recommend Spain.`
+2. Confirm the activity rail runs Destination -> Itinerary -> Budget and shows each contribution.
+3. Confirm the result includes destination reasons, five itinerary days with travel notes, a line-item budget, and a within-budget/over-budget decision.
+4. Submit a second brief, then request `GET http://localhost:8787/api/audit` and confirm both requests are present with route, mode, status, destination, total, and duration.
+5. Submit an empty form and confirm the UI rejects it without an API call.
+
+## API
+
+- `GET /api/health` - runtime and provider mode.
+- `POST /api/plan` - accepts `{ "prompt": string }` and returns an SSE stream of request, agent, result, or error events.
+- `GET /api/audit?limit=20` - returns recent persisted audit records.
+
+## Design and production notes
+
+See `DECISION_NOTE.md` for the three key decisions and deliberate cuts. See `ARCHITECTURE_NOTE.md` for the Azure design for 500+ concurrent users. `AGENTS.md`, `PROGRESS.md`, and `feature-list.json` are the repository harness: they keep scope, checks, and handoff state visible.
+
+## Current limitations
+
+The demo estimates are illustrative, not live availability or prices. The JSON repository is intentionally small and suitable for the take-home; production would use tenant-scoped PostgreSQL, a queue for long model runs, Entra ID, Key Vault, and OpenTelemetry as described in the architecture note.

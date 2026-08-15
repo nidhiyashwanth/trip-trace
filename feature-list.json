@@ -1,0 +1,41 @@
+{
+  "wip_limit": 1,
+  "pass_gate": "The evaluator moves a feature to passing only after its listed verification evidence succeeds.",
+  "features": [
+    {
+      "id": "F01",
+      "behavior": "Repository contains a runnable React 18/Vite frontend, Node API contract, and assessment notes.",
+      "verification": "pnpm typecheck && pnpm test && pnpm build",
+      "state": "passing",
+      "evidence": "pnpm verify: typecheck passed, 8 tests passed, Vite build passed"
+    },
+    {
+      "id": "F02",
+      "behavior": "A natural-language brief routes through distinct destination, itinerary, and budget agents and returns a synthesised plan.",
+      "verification": "POST /api/plan in demo mode, then complete the browser walkthrough in README.md",
+      "state": "passing",
+      "evidence": "curl SSE walkthrough: request -> Destination -> Itinerary -> Budget -> result; browser showed Lisbon plan"
+    },
+    {
+      "id": "F03",
+      "behavior": "Each completed request is persisted with route, agents/provider mode, status, destination, cost, and duration.",
+      "verification": "Run two plans, GET /api/audit, and confirm both records contain the required fields",
+      "state": "passing",
+      "evidence": "GET /api/audit after two plans returned persisted route, mode, status, destination, total, and duration fields"
+    },
+    {
+      "id": "F04",
+      "behavior": "User sees loading/agent activity, actionable errors, agent contributions, budget status, and uncertainty notes.",
+      "verification": "Browser walkthrough covers loading state, successful plan, and empty/invalid input",
+      "state": "passing",
+      "evidence": "Browser snapshot showed agent activity, contribution summaries, budget buffer, uncertainty note, and actionable short-input alert"
+    },
+    {
+      "id": "F05",
+      "behavior": "Submission includes reproducible README, <=400-word decision note, <=300-word Azure architecture note, and deployment configuration.",
+      "verification": "Manual review of README.md, DECISION_NOTE.md, ARCHITECTURE_NOTE.md, and package scripts",
+      "state": "passing",
+      "evidence": "README.md, DECISION_NOTE.md, ARCHITECTURE_NOTE.md, .env.example, package scripts, and pnpm-workspace.yaml reviewed"
+    }
+  ]
+}

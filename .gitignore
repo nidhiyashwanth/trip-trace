@@ -1,0 +1,9 @@
+node_modules/
+dist/
+data/audit.json
+.env
+.env.local
+.env.*.local
+*.log
+tmp/
+take-home-assignment-*.pdf
