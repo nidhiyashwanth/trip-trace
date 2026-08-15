@@ -4,7 +4,7 @@ Trip Trace is a small multi-agent trip planner built for the Senior Full Stack E
 
 ## Submission status
 
-- Live URL: pending authenticated deployment verification.
+- Live URL: pending authenticated deployment verification. The repository is deployment-ready via `vercel.json`.
 - Repository: this directory is ready to publish after local verification.
 - Default mode: deterministic demo, no API key and no paid service required.
 - Optional model mode: set `GEMINI_API_KEY` in an untracked `.env` file. The default model is `gemini-2.5-flash-lite`; set `GEMINI_MODEL` to change it.
@@ -29,6 +29,16 @@ pnpm dev
 Open `http://localhost:5173`. The API runs on `http://localhost:8787`.
 
 For a model-backed run, copy `.env.example` to `.env` and add a free Google AI Studio key. Do not commit `.env`.
+
+## Deploy to a free Vercel project
+
+The checked-in Vercel adapters reuse the same orchestration contract and keep demo mode keyless:
+
+```powershell
+npx vercel --prod
+```
+
+Set `AGENT_MODE=demo` for a no-key deployment, or add `GEMINI_API_KEY` and `GEMINI_MODEL` as encrypted project environment variables for model-backed runs. Verify the deployed `/api/health`, then submit a brief at the returned URL. This local run could not create the live URL because no Vercel account was authenticated.
 
 ## Checks
 

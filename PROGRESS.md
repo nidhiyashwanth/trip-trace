@@ -34,6 +34,8 @@
 ## Blockers / external actions
 
 - A public GitHub repository and hosting account are external publication steps; do not claim them complete until verified at the destination.
+- GitHub publication is complete at `https://github.com/nidhiyashwanth/trip-trace` on branch `agent/trip-trace-take-home`.
+- Vercel CLI is available, but no Vercel account/token is authenticated in this environment; `vercel.json` and `api/` adapters are ready for the user to run `npx vercel --prod`.
 - The live provider can run deterministic demo mode without credentials. A Gemini free-tier key is optional for model-backed runs.
 
 ## Next action
