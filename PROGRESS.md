@@ -38,7 +38,7 @@
 
 ## Blockers / external actions
 
-- GitHub publication is complete at `https://github.com/nidhiyashwanth/trip-trace` on branch `agent/trip-trace-take-home`.
+- GitHub publication is complete at `https://github.com/nidhiyashwanth/trip-trace` on branch `main`.
 - Vercel production is live at `https://zotefoam.vercel.app`; its free serverless filesystem is ephemeral, so the browser keeps a session-scoped redacted audit fallback while the local/production design note points to durable Azure storage.
 - The live provider can run deterministic demo mode without credentials. A Gemini free-tier key is optional for model-backed runs.
 

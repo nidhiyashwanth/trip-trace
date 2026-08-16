@@ -5,7 +5,7 @@ Trip Trace is a small multi-agent trip planner built for the Senior Full Stack E
 ## Submission status
 
 - Live URL: [https://zotefoam.vercel.app](https://zotefoam.vercel.app) (Vercel production deployment, verified 2026-08-17).
-- Repository: [github.com/nidhiyashwanth/trip-trace](https://github.com/nidhiyashwanth/trip-trace/tree/agent/trip-trace-take-home), branch `agent/trip-trace-take-home`.
+- Repository: [github.com/nidhiyashwanth/trip-trace](https://github.com/nidhiyashwanth/trip-trace/tree/main), branch `main`.
 - Default mode: deterministic demo, no API key and no paid service required.
 - Optional model mode: set `GEMINI_API_KEY` in an untracked `.env` file. The default model is `gemini-2.5-flash-lite`; set `GEMINI_MODEL` to change it.
 
