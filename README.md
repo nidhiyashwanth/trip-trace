@@ -52,15 +52,16 @@ pnpm verify
 ## Walkthrough
 
 1. Submit: `Plan five days somewhere warm in Europe under £1,500 with food, culture, and a relaxed pace. Do not recommend Spain.`
-2. Confirm the activity rail runs Destination -> Itinerary -> Budget and shows each contribution.
-3. Confirm the result includes destination reasons, five itinerary days with travel notes, a line-item budget, and a within-budget/over-budget decision.
-4. Submit a second brief, then request `GET http://localhost:8787/api/audit` and confirm both requests are present with route, mode, status, destination, total, and duration.
-5. Submit an empty form and confirm the UI rejects it without an API call.
+2. Confirm the plan status shows Destination -> Itinerary -> Budget and shows each contribution.
+3. Confirm the result includes three clickable destination options. Choose another option and verify the itinerary and budget rebuild for that destination.
+4. Confirm the result includes destination reasons, five itinerary days with travel notes, a line-item budget, and a within-budget/over-budget decision.
+5. Submit a second brief, then request `GET http://localhost:8787/api/audit` and confirm both requests are present with route, mode, status, destination, total, and duration.
+6. Submit an empty form and confirm the UI rejects it without an API call.
 
 ## API
 
 - `GET /api/health` - runtime and provider mode.
-- `POST /api/plan` - accepts `{ "prompt": string }` and returns an SSE stream of request, agent, result, or error events.
+- `POST /api/plan` - accepts `{ "prompt": string, "destination": DestinationOption? }` and returns an SSE stream of request, agent, result, or error events. The selected option is validated and reused for the rebuilt itinerary and budget, even when it is outside the deterministic demo catalog.
 - `GET /api/audit?limit=20` - returns recent persisted audit records.
 
 ## Design and production notes

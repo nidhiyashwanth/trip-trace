@@ -1,10 +1,43 @@
-import { isCountryExcluded, DESTINATION_CATALOG } from "./catalog";
+import { isCountryExcluded } from "./catalog";
 import type {
   BudgetOutput,
   DestinationOutput,
+  DestinationOption,
   ItineraryOutput,
   ParsedRequest,
 } from "../shared/types";
+
+export function assertDestinationOption(value: unknown, request: ParsedRequest): asserts value is DestinationOption {
+  if (!value || typeof value !== "object") throw new Error("Selected destination is invalid.");
+  const option = value as Partial<DestinationOption>;
+  if (
+    typeof option.name !== "string" ||
+    typeof option.country !== "string" ||
+    typeof option.region !== "string" ||
+    typeof option.climate !== "string" ||
+    typeof option.whyItFits !== "string" ||
+    !option.name.trim() ||
+    !option.country.trim() ||
+    !option.region.trim() ||
+    !option.climate.trim() ||
+    !option.whyItFits.trim()
+  ) {
+    throw new Error("Selected destination is incomplete.");
+  }
+  const amounts = [
+    option.estimatedTransportGbp,
+    option.estimatedStayGbp,
+    option.estimatedFoodAndActivitiesGbp,
+    option.estimatedTotalGbp,
+  ];
+  if (amounts.some((amount) => typeof amount !== "number" || !Number.isFinite(amount) || amount < 0)) {
+    throw new Error("Selected destination has invalid estimates.");
+  }
+  const selectedCountry = option.country as string;
+  if (request.excludedCountries.some((country) => country.toLowerCase() === selectedCountry.toLowerCase())) {
+    throw new Error("Selected destination violates an excluded-country hard constraint.");
+  }
+}
 
 export function assertDestinationOutput(
   output: DestinationOutput,
@@ -13,6 +46,7 @@ export function assertDestinationOutput(
   if (!output || !output.selected || !Array.isArray(output.suggestions) || output.suggestions.length === 0) {
     throw new Error("Destination Agent returned no usable suggestions.");
   }
+  assertDestinationOption(output.selected, request);
   if (isCountryExcluded({
     name: output.selected.name,
     country: output.selected.country,
@@ -25,13 +59,11 @@ export function assertDestinationOutput(
   }, request)) {
     throw new Error("Destination Agent selected a country excluded by the user.");
   }
+  if (request.destinationHint && output.selected.name.toLowerCase() !== request.destinationHint.toLowerCase()) {
+    throw new Error("Destination Agent did not use the destination selected by the user.");
+  }
   for (const suggestion of output.suggestions) {
-    if (!suggestion.name || !suggestion.country || !suggestion.whyItFits) {
-      throw new Error("Every destination suggestion must include a reason.");
-    }
-    if (request.excludedCountries.some((country) => country.toLowerCase() === suggestion.country.toLowerCase())) {
-      throw new Error("Destination Agent included a country excluded by the user.");
-    }
+    assertDestinationOption(suggestion, request);
   }
 }
 
@@ -63,11 +95,5 @@ export function assertBudgetOutput(output: BudgetOutput, request: ParsedRequest)
   if (output.status !== expectedStatus) throw new Error("Budget Agent status contradicts its total.");
   if (output.status === "over_budget" && (!output.alternative || output.overageGbp <= 0)) {
     throw new Error("Budget Agent must explain an overage and propose an alternative.");
-  }
-}
-
-export function assertKnownDestination(name: string): void {
-  if (!DESTINATION_CATALOG.some((entry) => entry.name.toLowerCase() === name.toLowerCase())) {
-    throw new Error(`Destination ${name} is outside the current curated catalog.`);
   }
 }

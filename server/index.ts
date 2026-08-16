@@ -5,6 +5,9 @@ import { randomUUID } from "node:crypto";
 import { orchestrate } from "./orchestrator";
 import { JsonAuditRepository } from "./persistence";
 import { hasGeminiCredentials, geminiModel } from "./llm";
+import { parseRequest } from "./request-parser";
+import { assertDestinationOption } from "./validation";
+import type { DestinationOption } from "../shared/types";
 import type { AuditRecord, PlanStreamEvent } from "../shared/types";
 
 const app = express();
@@ -36,9 +39,21 @@ app.get("/api/audit", async (request, response) => {
 
 app.post("/api/plan", async (request, response) => {
   const prompt = typeof request.body?.prompt === "string" ? request.body.prompt.trim() : "";
+  const destination = request.body?.destination as unknown;
   if (prompt.length < 12 || prompt.length > 2_000) {
     response.status(400).json({ error: "Tell us a little more about the trip (12 to 2,000 characters)." });
     return;
+  }
+  const parsedRequest = parseRequest(prompt);
+  let selectedDestination: DestinationOption | undefined;
+  if (destination !== undefined) {
+    try {
+      assertDestinationOption(destination, parsedRequest);
+      selectedDestination = destination;
+    } catch {
+      response.status(400).json({ error: "That destination could not be used for this plan." });
+      return;
+    }
   }
 
   response.status(200);
@@ -57,11 +72,11 @@ app.post("/api/plan", async (request, response) => {
   const requestId = randomUUID();
 
   try {
-    const result = await orchestrate(prompt, { requestId, onEvent: send });
+    const result = await orchestrate(prompt, { requestId, onEvent: send, destinationOption: selectedDestination });
     const audit: AuditRecord = {
       id: requestId,
       createdAt: result.createdAt,
-      prompt,
+      prompt: selectedDestination ? `${prompt}\nSelected destination: ${selectedDestination.name}` : prompt,
       route: result.route,
       mode: result.mode,
       status: "complete",

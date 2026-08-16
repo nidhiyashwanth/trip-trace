@@ -78,6 +78,56 @@ describe("Trip Trace contracts", () => {
       restoreEnvironment("DEMO_DELAY_MS", previousDelay);
     }
   });
+
+  it("rebuilds the full plan around a user-selected destination", async () => {
+    const previousMode = process.env.AGENT_MODE;
+    const previousDelay = process.env.DEMO_DELAY_MS;
+    process.env.AGENT_MODE = "demo";
+    process.env.DEMO_DELAY_MS = "0";
+    try {
+      const result = await orchestrate(
+        "Plan five days somewhere warm in Europe for under £1,500 with food and culture. Do not recommend Spain.",
+        {
+          destinationOption: {
+            name: "Varanasi",
+            country: "India",
+            region: "Asia",
+            climate: "warm and dry",
+            whyItFits: "A meaningful cultural destination with food and a reflective pace.",
+            estimatedTransportGbp: 560,
+            estimatedStayGbp: 300,
+            estimatedFoodAndActivitiesGbp: 190,
+            estimatedTotalGbp: 1050,
+          },
+        },
+      );
+      expect(result.destinations?.selected.name).toBe("Varanasi");
+      expect(result.itinerary?.destination).toBe("Varanasi");
+      expect(result.budget?.status).toBe("within_budget");
+    } finally {
+      restoreEnvironment("AGENT_MODE", previousMode);
+      restoreEnvironment("DEMO_DELAY_MS", previousDelay);
+    }
+  });
+
+  it("keeps provider failure details out of user-facing fallback warnings", async () => {
+    const previousMode = process.env.AGENT_MODE;
+    const previousKey = process.env.GEMINI_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.AGENT_MODE = "gemini";
+    process.env.GEMINI_API_KEY = "test-key";
+    globalThis.fetch = async () => new Response("upstream failure", { status: 503 });
+    try {
+      const result = await orchestrate("Plan five days somewhere warm in Europe under £1,500.");
+      expect(result.mode).toBe("demo");
+      expect(result.warnings.join(" ")).not.toContain("503");
+      expect(result.warnings).toContain("Some details were estimated locally because live travel data was unavailable.");
+    } finally {
+      restoreEnvironment("AGENT_MODE", previousMode);
+      restoreEnvironment("GEMINI_API_KEY", previousKey);
+      globalThis.fetch = previousFetch;
+    }
+  });
 });
 
 function restoreEnvironment(name: string, value: string | undefined): void {

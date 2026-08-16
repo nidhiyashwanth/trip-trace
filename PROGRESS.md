@@ -6,13 +6,16 @@
 - Assignment: Senior Full Stack Engineer, Cross Collaborative AI Platform
 - Active feature: none; local submission is complete
 - Mode: locally verified, publication pending
-- Last verified checkpoint: working tree before publication
+- Last verified checkpoint: focused UI and destination-option selection contract
 
 ## Completed
 
 - [x] Extracted and visually reviewed the two-page assignment PDF.
 - [x] Captured the must-have, should-have, stretch, and submission constraints in `AGENTS.md` and `feature-list.json`.
 - [x] Researched current official guidance for simple agent workflows, structured outputs, Vite, Gemini free tier, and Azure operations.
+- [x] Reframed the UI as a focused assessment surface: request, agent activity, plan output, interactive destination choices, and audit history, with no provider/request telemetry or ornamental animation.
+- [x] Replaced raw provider failure details with a user-facing local-estimate note.
+- [x] Made every displayed destination option a validated rebuild input, including destinations outside the deterministic demo catalog; the selected result is rendered as a non-interactive summary.
 
 ## In progress
 
@@ -25,10 +28,10 @@
 | Gate | Command / evidence | Status |
 | --- | --- | --- |
 | Static | `pnpm typecheck` | passed |
-| Unit | `pnpm test` - 8 tests | passed |
+| Unit | `pnpm test` - 10 tests | passed |
 | Build | `pnpm build` | passed |
-| Runtime | `GET /api/health`, SSE `POST /api/plan`, invalid input 400 | passed |
-| Browser E2E | Natural-language brief -> plan -> audit entry; short input alert; zero console errors | passed |
+| Runtime | `GET /api/health`, SSE `POST /api/plan`, invalid input 400, selected arbitrary destination object | passed |
+| Browser E2E | Natural-language brief -> plan -> clickable shortlist option -> rebuilt itinerary/budget; selected destination has no dead chooser; zero console errors | passed |
 | Deployment | Authenticated provider dashboard + live URL | pending |
 
 ## Blockers / external actions

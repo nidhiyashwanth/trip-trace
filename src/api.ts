@@ -1,13 +1,14 @@
-import type { AuditRecord, PlanResult, PlanStreamEvent } from "../shared/types";
+import type { AuditRecord, DestinationOption, PlanResult, PlanStreamEvent } from "../shared/types";
 
 export async function streamPlan(
   prompt: string,
   onEvent: (event: PlanStreamEvent) => void,
+  destination?: DestinationOption,
 ): Promise<PlanResult> {
   const response = await fetch("/api/plan", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(destination ? { prompt, destination } : { prompt }),
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;

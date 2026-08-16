@@ -4,6 +4,7 @@ import type {
   AgentId,
   AgentRunStatus,
   AuditRecord,
+  DestinationOption,
   PlanResult,
   PlanStreamEvent,
 } from "../shared/types";
@@ -21,15 +22,12 @@ const AGENT_LABELS: Record<AgentId, string> = {
   budget: "Budget",
 };
 
-interface ActivityState {
-  status: AgentRunStatus | "fallback";
-  message: string;
-}
+type ActivityState = AgentRunStatus | "fallback";
 
 const EMPTY_ACTIVITY: Record<AgentId, ActivityState> = {
-  destination: { status: "queued", message: "Waiting for the brief" },
-  itinerary: { status: "queued", message: "Waiting for destination context" },
-  budget: { status: "queued", message: "Waiting for the route" },
+  destination: "queued",
+  itinerary: "queued",
+  budget: "queued",
 };
 
 export default function App() {
@@ -37,6 +35,7 @@ export default function App() {
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [audit, setAudit] = useState<AuditRecord[]>([]);
   const [activity, setActivity] = useState(EMPTY_ACTIVITY);
+  const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -45,8 +44,8 @@ export default function App() {
     try {
       setAudit(await loadAudit());
       setAuditError(null);
-    } catch (refreshError) {
-      setAuditError(refreshError instanceof Error ? refreshError.message : "Audit history is unavailable.");
+    } catch {
+      setAuditError("Recent requests are unavailable right now.");
     }
   };
 
@@ -54,20 +53,36 @@ export default function App() {
     void refreshAudit();
   }, []);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = prompt.trim();
-    if (trimmed.length < 12) {
-      setError("Give the planner a little more detail - at least 12 characters.");
-      return;
+  const handleStreamEvent = (event: PlanStreamEvent) => {
+    if (event.type === "agent") {
+      setActivity((current) => ({
+        ...current,
+        [event.agent]: event.status === "error" ? "fallback" : event.status,
+      }));
     }
+    if (event.type === "result") {
+      setPlan(event.result);
+      setSelectedDestination(event.result.destinations?.selected.name ?? null);
+      const next = { ...EMPTY_ACTIVITY };
+      for (const agent of AGENTS) {
+        const contribution = event.result.contributions.find((item) => item.agent === agent);
+        next[agent] = contribution
+          ? contribution.status === "fallback" ? "fallback" : "complete"
+          : "queued";
+      }
+      setActivity(next);
+    }
+  };
+
+  const executePlan = async (requestPrompt: string, destination?: DestinationOption) => {
     setIsPlanning(true);
     setError(null);
     setPlan(null);
     setActivity(EMPTY_ACTIVITY);
     try {
-      const result = await streamPlan(trimmed, handleStreamEvent);
+      const result = await streamPlan(requestPrompt, handleStreamEvent, destination);
       setPlan(result);
+      setSelectedDestination(result.destinations?.selected.name ?? destination?.name ?? null);
       await refreshAudit();
     } catch (planningError) {
       setError(planningError instanceof Error ? planningError.message : "The plan could not be completed.");
@@ -76,32 +91,21 @@ export default function App() {
     }
   };
 
-  const handleStreamEvent = (event: PlanStreamEvent) => {
-    if (event.type === "agent") {
-      setActivity((current) => ({
-        ...current,
-        [event.agent]: {
-          status: event.status === "error" ? "fallback" : event.status,
-          message: event.message,
-        },
-      }));
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = prompt.trim();
+    if (trimmed.length < 12) {
+      setError("Tell us a little more about the trip you have in mind.");
+      return;
     }
-    if (event.type === "result") {
-      setPlan(event.result);
-      const next = { ...EMPTY_ACTIVITY };
-      for (const agent of AGENTS) {
-        const contribution = event.result.contributions.find((item) => item.agent === agent);
-        if (contribution) {
-          next[agent] = {
-            status: contribution.status === "fallback" ? "fallback" : "complete",
-            message: contribution.status === "fallback" ? "Safe local fallback used" : contribution.summary,
-          };
-        } else {
-          next[agent] = { status: "queued", message: "Not needed for this route" };
-        }
-      }
-      setActivity(next);
-    }
+    setSelectedDestination(null);
+    void executePlan(trimmed);
+  };
+
+  const handleDestinationSelect = (destination: DestinationOption) => {
+    if (!plan || isPlanning || destination.name === selectedDestination) return;
+    setSelectedDestination(destination.name);
+    void executePlan(prompt.trim(), destination);
   };
 
   const activeAgents = useMemo(() => plan?.route ?? AGENTS, [plan]);
@@ -109,48 +113,44 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand-lockup">
+        <a className="brand-lockup" href="#top" aria-label="Trip Trace home">
           <span className="brand-mark" aria-hidden="true">T/</span>
           <span className="brand-name">Trip Trace</span>
-          <span className="brand-subtitle">cross-collaborative planner</span>
-        </div>
-        <div className="topbar-meta">
-          <span className="live-dot" aria-hidden="true" />
-          <span>local, inspectable, free to run</span>
-        </div>
+        </a>
+        <span className="topbar-label">AI trip planner</span>
       </header>
 
-      <main>
-        <section className="command-zone" aria-labelledby="page-title">
-          <div className="section-kicker">01 / brief the route</div>
-          <div className="command-copy">
-            <h1 id="page-title">A trip plan with its reasoning intact.</h1>
-            <p>Give the planner a loose brief. Specialist agents will make the route, the days, and the money legible before you book anything.</p>
+      <main id="top" className="planner-shell">
+        <section className="brief-panel" aria-labelledby="page-title">
+          <div className="brief-copy">
+            <p className="eyebrow">Trip brief</p>
+            <h1 id="page-title">Plan the trip from one clear request.</h1>
+            <p>Describe where you want to go, how long you have, and what matters. The planner will return a destination, itinerary, and budget.</p>
           </div>
           <form className="brief-form" onSubmit={handleSubmit}>
-            <label htmlFor="trip-brief">Your trip brief</label>
+            <label htmlFor="trip-brief">Your request</label>
             <textarea
               id="trip-brief"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
-              placeholder="e.g. Five days somewhere warm in Europe for under £1,500..."
+              placeholder="Five days somewhere warm, with good food and time to wander..."
               maxLength={2_000}
               disabled={isPlanning}
-              rows={4}
+              rows={5}
             />
             <div className="brief-footer">
               <span className="character-count">{prompt.length} / 2,000</span>
               <button type="submit" className="primary-button" disabled={isPlanning}>
-                {isPlanning ? "Tracing the route" : "Build the plan"}
+                {isPlanning ? "Building the plan" : "Build the plan"}
                 <span aria-hidden="true">↗</span>
               </button>
             </div>
           </form>
-          <div className="example-row" aria-label="Example briefs">
-            <span className="example-label">Try a brief</span>
+          <div className="example-row" aria-label="Example trip requests">
+            <span className="example-label">Try an example</span>
             {EXAMPLES.map((example) => (
               <button key={example} type="button" className="example-button" onClick={() => setPrompt(example)} disabled={isPlanning}>
-                {example.split(" ").slice(0, 5).join(" ")}…
+                {example.split(" ").slice(0, 7).join(" ")}…
               </button>
             ))}
           </div>
@@ -158,165 +158,207 @@ export default function App() {
         </section>
 
         <section className="workspace-grid" aria-label="Trip planning workspace">
-          <aside className="trace-panel" aria-labelledby="trace-title">
-            <div className="section-kicker">02 / agent trace</div>
-            <div className="panel-heading-row">
-              <h2 id="trace-title">What is happening</h2>
-              <span className="trace-count">{activeAgents.length} agents</span>
-            </div>
-            <p className="panel-intro">Every contribution is named. The order is part of the answer.</p>
-            <div className="agent-list">
-              {AGENTS.map((agent, index) => {
-                const item = activity[agent];
-                const isIncluded = activeAgents.includes(agent);
-                return (
-                  <div className={`agent-row ${item.status === "running" ? "is-running" : ""} ${!isIncluded ? "is-muted" : ""}`} key={agent}>
-                    <div className="agent-number">0{index + 1}</div>
-                    <div className="agent-state" aria-hidden="true"><span /></div>
-                    <div className="agent-copy">
-                      <strong>{AGENT_LABELS[agent]} Agent</strong>
-                      <span>{isIncluded ? item.message : "Not needed for this brief"}</span>
-                    </div>
-                    <span className={`status-label status-${item.status}`}>{statusLabel(item.status)}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="trace-footnote">
-              <span className="tiny-rule" />
-              <span>Hard constraints are checked in code after every model-shaped result.</span>
-            </div>
+          <aside className="sidebar">
+            <ActivityPanel agents={activeAgents} activity={activity} isPlanning={isPlanning} hasPlan={Boolean(plan)} />
             <AuditPanel audit={audit} error={auditError} />
           </aside>
-
-          <section className="result-panel" aria-labelledby="result-title">
-            <div className="section-kicker">03 / finished route</div>
-            {plan ? <PlanView plan={plan} /> : <EmptyPlan isPlanning={isPlanning} />}
+          <section className="result-panel" aria-labelledby="result-title" aria-live="polite">
+            {plan ? (
+              <PlanView
+                plan={plan}
+                selectedDestination={selectedDestination}
+                onSelectDestination={handleDestinationSelect}
+                isPlanning={isPlanning}
+              />
+            ) : (
+              <EmptyPlan isPlanning={isPlanning} />
+            )}
           </section>
         </section>
       </main>
 
-      <footer className="footer">
-        <span>Trip Trace / take-home build</span>
-        <span>Estimates are planning aids, not live availability.</span>
-      </footer>
+      <footer className="footer">Estimates are planning aids, not live availability.</footer>
     </div>
+  );
+}
+
+function ActivityPanel({
+  agents,
+  activity,
+  isPlanning,
+  hasPlan,
+}: {
+  agents: AgentId[];
+  activity: Record<AgentId, ActivityState>;
+  isPlanning: boolean;
+  hasPlan: boolean;
+}) {
+  return (
+    <section className="activity-panel" aria-labelledby="activity-title">
+      <div className="panel-heading">
+        <div><p className="eyebrow">Transparency</p><h2 id="activity-title">Plan status</h2></div>
+        <span className="panel-state">{isPlanning ? "Working" : hasPlan ? "Complete" : "Ready"}</span>
+      </div>
+      <ol className="agent-list">
+        {agents.map((agent, index) => (
+          <li className={`agent-row status-${activity[agent]}`} key={agent}>
+            <span className="agent-number">0{index + 1}</span>
+            <div><strong>{AGENT_LABELS[agent]}</strong><span>{statusLabel(activity[agent], isPlanning)}</span></div>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
 function EmptyPlan({ isPlanning }: { isPlanning: boolean }) {
   return (
-    <div className={`empty-plan ${isPlanning ? "is-planning" : ""}`}>
-      <div className="empty-orbit" aria-hidden="true"><span /><span /><span /></div>
-      <h2 id="result-title">Your route will land here.</h2>
-      <p>{isPlanning ? "The agents are passing structured context downstream. Watch the trace on the left." : "A clear answer starts with a clear brief. The planner will keep the assumptions and trade-offs visible."}</p>
-      <div className="empty-specimen">
-        <span>DESTINATION</span><i />
-        <span>ITINERARY</span><i />
-        <span>BUDGET</span>
-      </div>
+    <div className="empty-plan">
+      <p className="eyebrow">Plan output</p>
+      <h2 id="result-title">{isPlanning ? "Building your plan." : "Your plan will appear here."}</h2>
+      <p>{isPlanning ? "The agents are working through your request." : "Submit a request to see destination options, day-by-day planning, budget, and assumptions."}</p>
     </div>
   );
 }
 
-function PlanView({ plan }: { plan: PlanResult }) {
+function PlanView({
+  plan,
+  selectedDestination,
+  onSelectDestination,
+  isPlanning,
+}: {
+  plan: PlanResult;
+  selectedDestination: string | null;
+  onSelectDestination: (destination: DestinationOption) => void;
+  isPlanning: boolean;
+}) {
   const selected = plan.destinations?.selected;
+  const notes = [...new Set([...plan.parsed.assumptions, ...plan.warnings].map(toUserFacingNote))];
+  const budgetCeiling = plan.budget?.budgetGbp ?? plan.parsed.budgetGbp;
+  const destinationName = selected?.name ?? plan.itinerary?.destination ?? "Your itinerary";
+  const activeSelection = selectedDestination ?? selected?.name ?? null;
+  const hasAlternatives = Boolean(plan.destinations && plan.destinations.suggestions.length > 1);
+
   return (
     <div className="plan-view">
-      <div className="plan-heading">
+      <div className="result-heading">
         <div>
-          <div className="plan-meta-row">
-            <span className="mode-badge"><span className="mode-dot" />{modeLabel(plan.mode)}</span>
-            <span>{plan.route.map((agent) => AGENT_LABELS[agent]).join(" → ")}</span>
-          </div>
-          <h2 id="result-title">{selected ? `${selected.name}, shaped around your brief.` : "A route shaped around your brief."}</h2>
+          <p className="eyebrow">Plan output</p>
+          <h2 id="result-title">{destinationName}</h2>
         </div>
-        <span className="request-id">trace {plan.requestId.slice(0, 8)}</span>
+        <div className="summary-facts" aria-label="Plan summary">
+          <span><strong>{plan.parsed.days}</strong> days</span>
+          <span><strong>£{budgetCeiling.toLocaleString("en-GB")}</strong> ceiling</span>
+        </div>
       </div>
+
       <p className="synthesis">{plan.synthesis}</p>
 
-      <div className="constraint-strip">
-        <span className="strip-label">Read as</span>
-        <span>{plan.parsed.days} days</span>
-        <span>£{plan.parsed.budgetGbp.toLocaleString("en-GB")} ceiling</span>
-        {plan.parsed.region && <span>{plan.parsed.region}</span>}
-        {plan.parsed.climate && <span>{plan.parsed.climate}</span>}
-        {plan.parsed.excludedCountries.length > 0 && <span className="constraint-alert">excluding {plan.parsed.excludedCountries.join(", ")}</span>}
+      <div className="contributor-line" aria-label="Agents that contributed to this plan">
+        <span>Contributors</span>
+        {plan.contributions.map((contribution) => <strong key={contribution.agent}>{contribution.label}</strong>)}
       </div>
 
-      {plan.destinations && (
-        <section className="plan-section">
-          <SectionHeading number="A" title="Destination signal" detail="why these options survived the brief" />
-          <div className="destination-grid">
-            {plan.destinations.suggestions.map((destination, index) => (
-              <article className={`destination-option ${index === 0 ? "is-selected" : ""}`} key={`${destination.name}-${destination.country}`}>
-                <div className="option-topline"><span>0{index + 1}</span>{index === 0 && <span className="selected-label">selected</span>}</div>
-                <h3>{destination.name}<small>{destination.country}</small></h3>
-                <p>{destination.whyItFits}</p>
-                <span className="option-estimate">from £{destination.estimatedTotalGbp.toLocaleString("en-GB")}</span>
-              </article>
-            ))}
-          </div>
-          <p className="guardrail-note"><span>Guardrail</span>{plan.destinations.guardrailNote}</p>
-        </section>
-      )}
+      <div className="constraint-strip" aria-label="Trip constraints">
+        <span>{plan.parsed.days} days</span>
+        <span>£{budgetCeiling.toLocaleString("en-GB")} ceiling</span>
+        {plan.parsed.region && <span>{plan.parsed.region}</span>}
+        {plan.parsed.climate && <span>{plan.parsed.climate}</span>}
+        {plan.parsed.excludedCountries.length > 0 && <span className="constraint-alert">{plan.parsed.excludedCountries.join(", ")} excluded</span>}
+      </div>
 
       {plan.itinerary && (
         <section className="plan-section">
-          <SectionHeading number="B" title="Days with room to breathe" detail="one geographic anchor per day" />
+          <div className="section-heading"><h3>Day by day</h3><span>Realistic sequencing and travel notes</span></div>
           <div className="itinerary-list">
             {plan.itinerary.days.map((day) => (
               <article className="day-row" key={day.day}>
                 <span className="day-number">{String(day.day).padStart(2, "0")}</span>
                 <div className="day-body">
-                  <div className="day-title-row"><h3>{day.title}</h3><span className={`confidence confidence-${day.confidence}`}>{day.confidence} confidence</span></div>
+                  <h4>{day.title}</h4>
                   <p>{day.plan}</p>
-                  <span className="travel-note"><span aria-hidden="true">↳</span>{day.travelNote}</span>
+                  <p className="travel-note">{day.travelNote}</p>
                 </div>
               </article>
             ))}
           </div>
-          <p className="uncertainty-note"><span>Uncertainty</span>{plan.itinerary.uncertaintyNote}</p>
+          <p className="uncertainty-note">{plan.itinerary.uncertaintyNote}</p>
         </section>
       )}
 
       {plan.budget && (
         <section className="plan-section budget-section">
-          <SectionHeading number="C" title="Money, without the quiet overage" detail="transparent estimate in GBP" />
+          <div className="section-heading"><h3>Budget</h3><span>Estimate in GBP</span></div>
           <div className="budget-layout">
             <div className={`budget-total ${plan.budget.status === "over_budget" ? "is-over" : ""}`}>
-              <span>{plan.budget.status === "within_budget" ? "inside ceiling" : "needs adjustment"}</span>
+              <span>Total estimate</span>
               <strong>£{plan.budget.totalGbp.toLocaleString("en-GB")}</strong>
-              <small>against £{plan.budget.budgetGbp.toLocaleString("en-GB")}</small>
+              <small>{plan.budget.status === "within_budget" ? `£${Math.max(0, plan.budget.budgetGbp - plan.budget.totalGbp).toLocaleString("en-GB")} left` : `£${plan.budget.overageGbp.toLocaleString("en-GB")} over`}</small>
             </div>
             <div className="budget-lines">
               <BudgetLine label="Transport" value={plan.budget.transportGbp} />
               <BudgetLine label="Accommodation" value={plan.budget.accommodationGbp} />
               <BudgetLine label="Food + activities" value={plan.budget.foodAndActivitiesGbp} />
-              <BudgetLine label="10% contingency" value={plan.budget.contingencyGbp} />
+              <BudgetLine label="Contingency" value={plan.budget.contingencyGbp} />
             </div>
           </div>
           <div className={`budget-callout ${plan.budget.status === "over_budget" ? "is-over" : ""}`}>
-            <span>{plan.budget.status === "within_budget" ? "Buffer" : `£${plan.budget.overageGbp} over`}</span>
+            <strong>{plan.budget.status === "within_budget" ? "Within budget" : "Over budget"}</strong>
             <p>{plan.budget.alternative}</p>
           </div>
         </section>
       )}
 
-      {(plan.warnings.length > 0 || plan.parsed.assumptions.length > 0) && (
+      {notes.length > 0 && (
         <section className="notes-section">
-          <SectionHeading number="D" title="Assumptions to check" detail="what the planner could not know" />
-          <ul>
-            {[...new Set([...plan.parsed.assumptions, ...plan.warnings])].map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
+          <div className="section-heading"><h3>Assumptions and uncertainty</h3><span>Check before booking</span></div>
+          <ul>{notes.map((note) => <li key={note}>{note}</li>)}</ul>
+        </section>
+      )}
+
+      {plan.destinations && (
+        <section className="plan-section">
+          <div className="section-heading">
+            <h3>{hasAlternatives ? "Destination options" : "Selected destination"}</h3>
+            {hasAlternatives && <span>Choose one to rebuild the plan</span>}
+          </div>
+          <div className="destination-list">
+            {plan.destinations.suggestions.map((destination, index) => {
+              const isSelected = activeSelection?.toLowerCase() === destination.name.toLowerCase();
+              const content = (
+                <>
+                  <span className="option-number">0{index + 1}</span>
+                  <span className="option-main"><strong>{destination.name}</strong><small>{destination.country} · from £{destination.estimatedTotalGbp.toLocaleString("en-GB")}</small><span>{destination.whyItFits}</span></span>
+                  <span className="option-action">{isSelected ? "Selected" : "Choose"} {hasAlternatives && <span aria-hidden="true">↗</span>}</span>
+                </>
+              );
+              return hasAlternatives ? (
+                <button
+                  type="button"
+                  className={`destination-option ${isSelected ? "is-selected" : ""}`}
+                  key={`${destination.name}-${destination.country}`}
+                  aria-pressed={isSelected}
+                  disabled={isPlanning}
+                  onClick={() => onSelectDestination(destination)}
+                >
+                  {content}
+                </button>
+              ) : (
+                <div
+                  className={`destination-option ${isSelected ? "is-selected" : ""}`}
+                  key={`${destination.name}-${destination.country}`}
+                  aria-label={`${destination.name} selected`}
+                >
+                  {content}
+                </div>
+              );
+            })}
+          </div>
+          <p className="guardrail-note">{plan.destinations.guardrailNote}</p>
         </section>
       )}
     </div>
   );
-}
-
-function SectionHeading({ number, title, detail }: { number: string; title: string; detail: string }) {
-  return <div className="section-heading"><span>{number}</span><div><h3>{title}</h3><p>{detail}</p></div></div>;
 }
 
 function BudgetLine({ label, value }: { label: string; value: number }) {
@@ -325,43 +367,41 @@ function BudgetLine({ label, value }: { label: string; value: number }) {
 
 function AuditPanel({ audit, error }: { audit: AuditRecord[]; error: string | null }) {
   return (
-    <div className="audit-panel">
-      <div className="panel-heading-row"><h2>Audit trail</h2><span className="trace-count">{audit.length} recent</span></div>
+    <section className="audit-panel" aria-labelledby="audit-title">
+      <div className="panel-heading"><div><p className="eyebrow">Persistence</p><h2 id="audit-title">Recent requests</h2></div></div>
       {error ? <p className="audit-empty">{error}</p> : audit.length === 0 ? <p className="audit-empty">Completed requests will appear here.</p> : (
         <div className="audit-list">
-          {audit.slice(0, 5).map((record) => (
+          {audit.slice(0, 6).map((record) => (
             <div className="audit-row" key={record.id}>
-              <span className={`audit-status audit-${record.status}`} aria-label={record.status} />
-              <div><strong>{record.destination ?? "Unresolved"}</strong><span>{record.route.map((agent) => AGENT_LABELS[agent][0]).join(" / ")} · {formatDuration(record.durationMs)}</span></div>
-              <time dateTime={record.createdAt}>{formatRelativeTime(record.createdAt)}</time>
+              <div><strong>{record.destination ?? "Itinerary request"}</strong><span>{formatRelativeTime(record.createdAt)}</span></div>
+              <span className={`audit-status audit-${record.status}`}>{record.status === "complete" ? "Complete" : "Needs attention"}</span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-function statusLabel(status: ActivityState["status"]): string {
-  if (status === "running") return "working";
-  if (status === "complete") return "done";
-  if (status === "fallback") return "fallback";
-  if (status === "error") return "error";
-  return "queued";
+function statusLabel(status: ActivityState, isPlanning: boolean): string {
+  if (status === "running") return "Working";
+  if (status === "complete") return "Complete";
+  if (status === "fallback") return "Estimated locally";
+  return isPlanning ? "Next" : "Ready";
 }
 
-function modeLabel(mode: PlanResult["mode"]): string {
-  return mode === "gemini" ? "Gemini route" : mode === "mixed" ? "Gemini + safe fallback" : "Local demo route";
-}
-
-function formatDuration(durationMs: number): string {
-  return durationMs < 1_000 ? `${durationMs}ms` : `${(durationMs / 1_000).toFixed(1)}s`;
+function toUserFacingNote(note: string): string {
+  if (note.includes("upstream request failed") || note.includes("deterministic fallback") || note.includes("local estimate")) {
+    return "Some details were estimated locally because live travel data was unavailable.";
+  }
+  return note;
 }
 
 function formatRelativeTime(value: string): string {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
-  if (minutes < 1) return "now";
-  if (minutes === 1) return "1m";
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 1) return "Just now";
+  if (minutes === 1) return "1 minute ago";
+  if (minutes < 60) return `${minutes} minutes ago`;
+  if (minutes < 120) return "1 hour ago";
+  return `${Math.floor(minutes / 60)} hours ago`;
 }

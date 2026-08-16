@@ -16,7 +16,12 @@ export function runDestinationDemo(request: ParsedRequest): DestinationOutput {
   const scored = eligible
     .map((entry) => ({ entry, score: scoreDestination(entry, request) }))
     .sort((left, right) => right.score - left.score);
-  const candidates = scored;
+  const hinted = request.destinationHint
+    ? scored.find(({ entry }) => entry.name.toLowerCase() === request.destinationHint?.toLowerCase())
+    : null;
+  const candidates = hinted
+    ? [hinted, ...scored.filter(({ entry }) => entry.name !== hinted.entry.name)]
+    : scored;
   const suggestions = candidates
     .slice(0, 3)
     .map(({ entry }) => toDestinationOption(entry, request));
@@ -25,8 +30,8 @@ export function runDestinationDemo(request: ParsedRequest): DestinationOutput {
     suggestions,
     selected,
     guardrailNote: request.excludedCountries.length > 0
-      ? `Excluded ${request.excludedCountries.join(", ")} before scoring recommendations.`
-      : "Recommendations were filtered against the stated hard constraints before ranking.",
+      ? `${request.excludedCountries.join(", ")} stays out of the shortlist.`
+      : "Every option was checked against the shape of your brief.",
   };
 }
 

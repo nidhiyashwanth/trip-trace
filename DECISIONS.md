@@ -37,3 +37,13 @@ Date: 2026-08-15
 Decision: Parse constraints before agent calls, validate structured output after each call, enforce exclusion and budget rules in application code, and display uncertainty.
 
 Why: Structured output helps shape data but does not guarantee semantic correctness. The application must own hard constraints and the audit trail.
+
+## D005 - Keep the UI focused on the assessment
+
+Date: 2026-08-15
+
+Decision: Keep one restrained black-and-white planner workspace with the brief, agent activity, result, audit history, and interactive destination choices as the only primary surfaces.
+
+Why: The brief values three well-orchestrated agents, transparency, loading/error states, and an audit trail over visual breadth. A direct layout makes those requirements easy to inspect and avoids shipping animation or content that does not help someone plan a trip.
+
+Rejected: A decorative hero, extra editorial sections, live/provider badges, and raw fallback messages. They add surface area without improving the assessed workflow.

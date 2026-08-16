@@ -14,6 +14,7 @@ import {
 } from "./llm";
 import {
   assertBudgetOutput,
+  assertDestinationOption,
   assertDestinationOutput,
   assertItineraryOutput,
 } from "./validation";
@@ -24,6 +25,7 @@ import type {
   AgentRunStatus,
   BudgetOutput,
   DestinationOutput,
+  DestinationOption,
   ItineraryOutput,
   PlanResult,
   PlanStreamEvent,
@@ -32,11 +34,16 @@ import type {
 export interface OrchestrationOptions {
   requestId?: string;
   onEvent?: (event: PlanStreamEvent) => void;
+  destinationOption?: DestinationOption;
 }
 
 export async function orchestrate(prompt: string, options: OrchestrationOptions = {}): Promise<PlanResult> {
   const requestId = options.requestId ?? randomUUID();
-  const parsed = parseRequest(prompt);
+  const parsedRequest = parseRequest(prompt);
+  if (options.destinationOption) assertDestinationOption(options.destinationOption, parsedRequest);
+  const parsed = options.destinationOption
+    ? { ...parsedRequest, destinationHint: options.destinationOption.name }
+    : parsedRequest;
   const route = routeRequest(parsed);
   const configuredMode = process.env.AGENT_MODE?.toLowerCase() ?? "auto";
   const useGemini = configuredMode === "gemini" || (configuredMode === "auto" && hasGeminiCredentials());
@@ -52,16 +59,36 @@ export async function orchestrate(prompt: string, options: OrchestrationOptions 
   emit(options, { type: "request", requestId, mode: useGemini ? "gemini" : "demo" });
 
   if (route.includes("destination")) {
-    const result = await runAgent("destination", options, contributions, async () => {
-      if (!useGemini) return runDestinationDemo(parsed);
-      const candidate = await runGeminiDestination(parsed);
-      assertDestinationOutput(candidate, parsed);
-      usedGemini = true;
-      return candidate;
-    }, () => runDestinationDemo(parsed), warnings);
-    destination = result.output;
-    destinationContext = destination;
-    usedFallback ||= result.fallback;
+    if (options.destinationOption) {
+      const startedAt = Date.now();
+      emit(options, { type: "agent", agent: "destination", status: "running", message: "Destination is working" });
+      destination = {
+        suggestions: [options.destinationOption],
+        selected: options.destinationOption,
+        guardrailNote: `${options.destinationOption.name} was selected from the shortlist.`,
+      };
+      assertDestinationOutput(destination, parsed);
+      destinationContext = destination;
+      contributions.push({
+        agent: "destination",
+        label: "Destination Agent",
+        status: "complete",
+        summary: `Used ${options.destinationOption.name} selected from the shortlist.`,
+        durationMs: Date.now() - startedAt,
+      });
+      emit(options, { type: "agent", agent: "destination", status: "complete", message: "Destination selected" });
+    } else {
+      const result = await runAgent("destination", options, contributions, async () => {
+        if (!useGemini) return runDestinationDemo(parsed);
+        const candidate = await runGeminiDestination(parsed);
+        assertDestinationOutput(candidate, parsed);
+        usedGemini = true;
+        return candidate;
+      }, () => runDestinationDemo(parsed), warnings);
+      destination = result.output;
+      destinationContext = destination;
+      usedFallback ||= result.fallback;
+    }
   }
 
   if (!destinationContext && (route.includes("itinerary") || route.includes("budget"))) {
@@ -106,7 +133,7 @@ export async function orchestrate(prompt: string, options: OrchestrationOptions 
     budget,
     synthesis: synthesize(parsed, route.includes("destination") ? destination : null, itinerary, budget),
     contributions,
-    warnings,
+    warnings: [...new Set(warnings)],
   };
   emit(options, { type: "result", result });
   return result;
@@ -131,13 +158,12 @@ async function runAgent<T>(
     contributions.push({ agent, label: labelFor(agent), status: "complete", summary: summaryFor(agent, output), durationMs });
     emit(options, { type: "agent", agent, status: "complete", message: `${labelFor(agent)} completed` });
     return { output, fallback: false };
-  } catch (error) {
+  } catch {
     const fallbackOutput = fallback();
     const durationMs = Date.now() - startedAt;
-    const message = error instanceof Error ? error.message : `${labelFor(agent)} failed`;
-    warnings.push(`${labelFor(agent)} used the deterministic fallback: ${message}`);
+    warnings.push("Some details were estimated locally because live travel data was unavailable.");
     contributions.push({ agent, label: labelFor(agent), status: "fallback", summary: summaryFor(agent, fallbackOutput), durationMs });
-    emit(options, { type: "agent", agent, status: "error", message: `${labelFor(agent)} fell back safely` });
+    emit(options, { type: "agent", agent, status: "error", message: "A local estimate was used" });
     return { output: fallbackOutput, fallback: true };
   }
 }
