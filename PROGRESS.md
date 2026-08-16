@@ -4,9 +4,9 @@
 
 - Workspace: `zotefoam`
 - Assignment: Senior Full Stack Engineer, Cross Collaborative AI Platform
-- Active feature: none; local submission is complete
-- Mode: locally verified, publication pending
-- Last verified checkpoint: focused UI and destination-option selection contract
+- Active feature: none; submission is deployed and locally/publicly verified
+- Mode: deployed to Vercel production
+- Last verified checkpoint: live URL, Traveler/Operator role stub, and redacted metrics view
 
 ## Completed
 
@@ -16,6 +16,8 @@
 - [x] Reframed the UI as a focused assessment surface: request, agent activity, plan output, interactive destination choices, and audit history, with no provider/request telemetry or ornamental animation.
 - [x] Replaced raw provider failure details with a user-facing local-estimate note.
 - [x] Made every displayed destination option a validated rebuild input, including destinations outside the deterministic demo catalog; the selected result is rendered as a non-interactive summary.
+- [x] Added a simple Operator role stub with redacted metrics, route/mode mix, and recent request outcomes; Traveler remains the planning surface.
+- [x] Deployed and verified the public Vercel URL, including health, streamed planning, operator switching, and browser console output.
 
 ## In progress
 
@@ -28,19 +30,18 @@
 | Gate | Command / evidence | Status |
 | --- | --- | --- |
 | Static | `pnpm typecheck` | passed |
-| Unit | `pnpm test` - 10 tests | passed |
+| Unit | `pnpm test` - 11 tests | passed |
 | Build | `pnpm build` | passed |
 | Runtime | `GET /api/health`, SSE `POST /api/plan`, invalid input 400, selected arbitrary destination object | passed |
-| Browser E2E | Natural-language brief -> plan -> clickable shortlist option -> rebuilt itinerary/budget; selected destination has no dead chooser; zero console errors | passed |
-| Deployment | Authenticated provider dashboard + live URL | pending |
+| Browser E2E | Natural-language brief -> plan -> clickable shortlist option -> rebuilt itinerary/budget; Traveler -> Operator role switch; zero console errors | passed |
+| Deployment | `https://zotefoam.vercel.app`: health, metrics, SSE plan, and production browser flow | passed |
 
 ## Blockers / external actions
 
-- A public GitHub repository and hosting account are external publication steps; do not claim them complete until verified at the destination.
 - GitHub publication is complete at `https://github.com/nidhiyashwanth/trip-trace` on branch `agent/trip-trace-take-home`.
-- Vercel CLI is available, but no Vercel account/token is authenticated in this environment; `vercel.json` and `api/` adapters are ready for the user to run `npx vercel --prod`.
+- Vercel production is live at `https://zotefoam.vercel.app`; its free serverless filesystem is ephemeral, so the browser keeps a session-scoped redacted audit fallback while the local/production design note points to durable Azure storage.
 - The live provider can run deterministic demo mode without credentials. A Gemini free-tier key is optional for model-backed runs.
 
 ## Next action
 
-Publish the verified checkout to an authenticated GitHub repository, then deploy through an available free host and verify the real URL. Do not mark deployment complete from local checks.
+Send the submission email with the verified live URL and repository link.

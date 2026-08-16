@@ -7,3 +7,5 @@ data/audit.json
 *.log
 tmp/
 take-home-assignment-*.pdf
+
+.vercel

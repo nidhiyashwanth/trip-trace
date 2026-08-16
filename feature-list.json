@@ -7,7 +7,7 @@
       "behavior": "Repository contains a runnable React 18/Vite frontend, Node API contract, and assessment notes.",
       "verification": "pnpm typecheck && pnpm test && pnpm build",
       "state": "passing",
-      "evidence": "pnpm verify: typecheck passed, 10 tests passed, Vite build passed"
+      "evidence": "pnpm verify: typecheck passed, 11 tests passed, Vite build passed"
     },
     {
       "id": "F02",
@@ -28,14 +28,21 @@
       "behavior": "User sees loading/agent activity, actionable errors, agent contributions, budget status, and uncertainty notes.",
       "verification": "Browser walkthrough covers loading state, successful plan, and empty/invalid input",
       "state": "passing",
-      "evidence": "Browser walkthrough showed route progress, end-user plan sections, budget buffer, uncertainty note, actionable short-input alert, and no provider/request telemetry"
+      "evidence": "Browser walkthrough showed route progress, end-user plan sections, budget buffer, uncertainty note, actionable short-input alert, and a separate Operator view with redacted metrics and recent outcomes"
     },
     {
       "id": "F05",
       "behavior": "Submission includes reproducible README, <=400-word decision note, <=300-word Azure architecture note, and deployment configuration.",
       "verification": "Manual review of README.md, DECISION_NOTE.md, ARCHITECTURE_NOTE.md, and package scripts",
       "state": "passing",
-      "evidence": "README.md, DECISION_NOTE.md, ARCHITECTURE_NOTE.md, .env.example, package scripts, and pnpm-workspace.yaml reviewed"
+      "evidence": "README.md, DECISION_NOTE.md, ARCHITECTURE_NOTE.md, .env.example, package scripts, and pnpm-workspace.yaml reviewed; https://zotefoam.vercel.app verified in production"
+    },
+    {
+      "id": "F06",
+      "behavior": "A simple Operator role exposes a distinct, redacted operational metrics and request-log view.",
+      "verification": "Open the app, run one plan, switch to ?role=operator, and confirm metrics, route mix, and recent outcomes are visible without prompts or provider payloads",
+      "state": "passing",
+      "evidence": "Public browser verification showed Traveler plan -> Operator view with Requests=1, Recent request log, Route mix, and zero console errors"
     }
   ]
 }

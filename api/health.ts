@@ -1,4 +1,4 @@
-import { hasGeminiCredentials, geminiModel } from "../server/llm";
+import { hasGeminiCredentials, geminiModel } from "../server/llm.js";
 
 interface ResponseLike {
   json(body: unknown): void;

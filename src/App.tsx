@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { loadAudit, streamPlan } from "./api";
+import { loadAudit, loadMetrics, rememberAudit, streamPlan } from "./api";
 import type {
   AgentId,
   AgentRunStatus,
   AuditRecord,
   DestinationOption,
+  ObservabilitySnapshot,
   PlanResult,
   PlanStreamEvent,
 } from "../shared/types";
@@ -23,6 +24,7 @@ const AGENT_LABELS: Record<AgentId, string> = {
 };
 
 type ActivityState = AgentRunStatus | "fallback";
+type UserRole = "traveler" | "operator";
 
 const EMPTY_ACTIVITY: Record<AgentId, ActivityState> = {
   destination: "queued",
@@ -30,15 +32,25 @@ const EMPTY_ACTIVITY: Record<AgentId, ActivityState> = {
   budget: "queued",
 };
 
+function initialRole(): UserRole {
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("role") === "operator") {
+    return "operator";
+  }
+  return "traveler";
+}
+
 export default function App() {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [role, setRole] = useState<UserRole>(() => initialRole());
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [audit, setAudit] = useState<AuditRecord[]>([]);
+  const [metrics, setMetrics] = useState<ObservabilitySnapshot | null>(null);
   const [activity, setActivity] = useState(EMPTY_ACTIVITY);
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   const refreshAudit = async () => {
     try {
@@ -49,9 +61,27 @@ export default function App() {
     }
   };
 
+  const refreshMetrics = async () => {
+    try {
+      setMetrics(await loadMetrics());
+      setMetricsError(null);
+    } catch {
+      setMetricsError("Operational metrics are unavailable right now.");
+    }
+  };
+
   useEffect(() => {
     void refreshAudit();
+    void refreshMetrics();
   }, []);
+
+  const handleRoleChange = (nextRole: UserRole) => {
+    setRole(nextRole);
+    const url = new URL(window.location.href);
+    if (nextRole === "operator") url.searchParams.set("role", "operator");
+    else url.searchParams.delete("role");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
 
   const handleStreamEvent = (event: PlanStreamEvent) => {
     if (event.type === "agent") {
@@ -75,6 +105,7 @@ export default function App() {
   };
 
   const executePlan = async (requestPrompt: string, destination?: DestinationOption) => {
+    const startedAt = Date.now();
     setIsPlanning(true);
     setError(null);
     setPlan(null);
@@ -83,7 +114,18 @@ export default function App() {
       const result = await streamPlan(requestPrompt, handleStreamEvent, destination);
       setPlan(result);
       setSelectedDestination(result.destinations?.selected.name ?? destination?.name ?? null);
-      await refreshAudit();
+      rememberAudit({
+        id: result.requestId,
+        createdAt: result.createdAt,
+        prompt: requestPrompt,
+        route: result.route,
+        mode: result.mode,
+        status: "complete",
+        destination: result.destinations?.selected.name ?? null,
+        totalGbp: result.budget?.totalGbp ?? null,
+        durationMs: Date.now() - startedAt,
+      });
+      await Promise.all([refreshAudit(), refreshMetrics()]);
     } catch (planningError) {
       setError(planningError instanceof Error ? planningError.message : "The plan could not be completed.");
     } finally {
@@ -117,11 +159,21 @@ export default function App() {
           <span className="brand-mark" aria-hidden="true">T/</span>
           <span className="brand-name">Trip Trace</span>
         </a>
-        <span className="topbar-label">AI trip planner</span>
+        <div className="topbar-tools">
+          <span className="topbar-label">{role === "operator" ? "Operator view" : "AI trip planner"}</span>
+          <div className="role-switcher" aria-label="Choose user role">
+            <button type="button" className={role === "traveler" ? "is-active" : ""} aria-pressed={role === "traveler"} onClick={() => handleRoleChange("traveler")}>Traveler</button>
+            <button type="button" className={role === "operator" ? "is-active" : ""} aria-pressed={role === "operator"} onClick={() => handleRoleChange("operator")}>Operator</button>
+          </div>
+        </div>
       </header>
 
       <main id="top" className="planner-shell">
-        <section className="brief-panel" aria-labelledby="page-title">
+        {role === "operator" ? (
+          <OperatorWorkspace metrics={metrics} error={metricsError} />
+        ) : (
+          <>
+          <section className="brief-panel" aria-labelledby="page-title">
           <div className="brief-copy">
             <p className="eyebrow">Trip brief</p>
             <h1 id="page-title">Plan the trip from one clear request.</h1>
@@ -155,9 +207,9 @@ export default function App() {
             ))}
           </div>
           {error && <div className="error-banner" role="alert">{error}</div>}
-        </section>
+          </section>
 
-        <section className="workspace-grid" aria-label="Trip planning workspace">
+          <section className="workspace-grid" aria-label="Trip planning workspace">
           <aside className="sidebar">
             <ActivityPanel agents={activeAgents} activity={activity} isPlanning={isPlanning} hasPlan={Boolean(plan)} />
             <AuditPanel audit={audit} error={auditError} />
@@ -174,7 +226,9 @@ export default function App() {
               <EmptyPlan isPlanning={isPlanning} />
             )}
           </section>
-        </section>
+          </section>
+          </>
+        )}
       </main>
 
       <footer className="footer">Estimates are planning aids, not live availability.</footer>
@@ -218,6 +272,85 @@ function EmptyPlan({ isPlanning }: { isPlanning: boolean }) {
       <h2 id="result-title">{isPlanning ? "Building your plan." : "Your plan will appear here."}</h2>
       <p>{isPlanning ? "The agents are working through your request." : "Submit a request to see destination options, day-by-day planning, budget, and assumptions."}</p>
     </div>
+  );
+}
+
+function OperatorWorkspace({
+  metrics,
+  error,
+}: {
+  metrics: ObservabilitySnapshot | null;
+  error: string | null;
+}) {
+  const routeEntries = metrics
+    ? Object.entries(metrics.routeCounts).sort((left, right) => right[1] - left[1])
+    : [];
+  const modeEntries = metrics ? Object.entries(metrics.modeCounts) : [];
+
+  return (
+    <section className="operator-workspace" aria-labelledby="operator-title">
+      <div className="operator-heading">
+        <div>
+          <p className="eyebrow">Operator view</p>
+          <h1 id="operator-title">Planning activity.</h1>
+        </div>
+        <p>Review request outcomes, routing, and timing in a read-only operations view.</p>
+      </div>
+
+      {error ? (
+        <div className="error-banner operator-error" role="alert">{error}</div>
+      ) : metrics ? (
+        <>
+          <div className="metrics-grid" aria-label="Planning metrics">
+            <div className="metric-item"><span>Requests</span><strong>{metrics.totalRequests}</strong></div>
+            <div className="metric-item"><span>Completed</span><strong>{metrics.completedRequests}</strong></div>
+            <div className="metric-item"><span>Errors</span><strong>{metrics.errorRequests}</strong></div>
+            <div className="metric-item"><span>Average duration</span><strong>{formatDurationMs(metrics.averageDurationMs)}</strong></div>
+          </div>
+
+          <div className="operator-columns">
+            <section className="operator-section" aria-labelledby="operator-log-title">
+              <div className="section-heading"><h2 id="operator-log-title">Recent request log</h2><span>Redacted operational record</span></div>
+              {metrics.recent.length === 0 ? <p className="operator-empty">Completed requests will appear here.</p> : (
+                <div className="operator-log">
+                  {metrics.recent.map((record) => (
+                    <div className="operator-log-row" key={record.id}>
+                      <div>
+                        <strong>{record.destination ?? "Itinerary request"}</strong>
+                        <span>{record.route.length > 0 ? record.route.join(" → ") : "No agent route"}</span>
+                      </div>
+                      <div className="operator-log-meta">
+                        <strong className={`audit-status audit-${record.status}`}>{record.status === "complete" ? "Complete" : "Needs attention"}</strong>
+                        <span>{formatRelativeTime(record.createdAt)} · {formatDurationMs(record.durationMs)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="operator-section" aria-labelledby="operator-breakdown-title">
+              <div className="section-heading"><h2 id="operator-breakdown-title">Route mix</h2><span>Requests by orchestration path</span></div>
+              <div className="operator-breakdown">
+                {routeEntries.length === 0 ? <p className="operator-empty">No route data yet.</p> : routeEntries.map(([route, count]) => (
+                  <div className="operator-breakdown-row" key={route}><span>{route}</span><strong>{count}</strong></div>
+                ))}
+              </div>
+              <div className="operator-mode-block">
+                <div className="section-heading"><h3>Run mode</h3><span>Provider path</span></div>
+                <div className="operator-breakdown">
+                  {modeEntries.map(([mode, count]) => (
+                    <div className="operator-breakdown-row" key={mode}><span>{mode}</span><strong>{count}</strong></div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </div>
+        </>
+      ) : (
+        <div className="operator-empty">Loading planning activity…</div>
+      )}
+    </section>
   );
 }
 
@@ -404,4 +537,8 @@ function formatRelativeTime(value: string): string {
   if (minutes < 60) return `${minutes} minutes ago`;
   if (minutes < 120) return "1 hour ago";
   return `${Math.floor(minutes / 60)} hours ago`;
+}
+
+function formatDurationMs(value: number): string {
+  return value < 1_000 ? `${value}ms` : `${(value / 1_000).toFixed(1)}s`;
 }

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { orchestrate } from "../server/orchestrator";
-import { JsonAuditRepository } from "../server/persistence";
-import type { AuditRecord, PlanStreamEvent } from "../shared/types";
+import { orchestrate } from "../server/orchestrator.js";
+import { parseRequest } from "../server/request-parser.js";
+import { JsonAuditRepository } from "../server/persistence.js";
+import { assertDestinationOption } from "../server/validation.js";
+import type { AuditRecord, DestinationOption, PlanStreamEvent } from "../shared/types";
 
 interface RequestLike {
   method?: string;
@@ -17,21 +19,39 @@ interface ResponseLike {
   json(body: unknown): void;
 }
 
+interface PlanBody {
+  prompt?: unknown;
+  destination?: unknown;
+}
+
 export default async function handler(request: RequestLike, response: ResponseLike): Promise<void> {
   if (request.method !== "POST") {
     response.status(405).json({ error: "Only POST is supported for planning." });
     return;
   }
   const body = typeof request.body === "string" ? parseBody(request.body) : request.body;
-  const prompt = typeof (body as { prompt?: unknown } | null)?.prompt === "string"
-    ? (body as { prompt: string }).prompt.trim()
+  const parsedBody = body && typeof body === "object" ? body as PlanBody : {};
+  const prompt = typeof parsedBody.prompt === "string"
+    ? parsedBody.prompt.trim()
     : "";
   if (prompt.length < 12 || prompt.length > 2_000) {
     response.status(400).json({ error: "Tell us a little more about the trip (12 to 2,000 characters)." });
     return;
   }
+  const parsedRequest = parseRequest(prompt);
+  let selectedDestination: DestinationOption | undefined;
+  if (parsedBody.destination !== undefined) {
+    try {
+      assertDestinationOption(parsedBody.destination, parsedRequest);
+      selectedDestination = parsedBody.destination;
+    } catch {
+      response.status(400).json({ error: "That destination could not be used for this plan." });
+      return;
+    }
+  }
 
   process.env.DATA_DIR ??= "/tmp/trip-trace-data";
+  const repository = new JsonAuditRepository();
   response.status(200);
   response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   response.setHeader("Cache-Control", "no-cache, no-transform");
@@ -44,11 +64,11 @@ export default async function handler(request: RequestLike, response: ResponseLi
   };
 
   try {
-    const result = await orchestrate(prompt, { requestId, onEvent: send });
+    const result = await orchestrate(prompt, { requestId, onEvent: send, destinationOption: selectedDestination });
     const audit: AuditRecord = {
       id: requestId,
       createdAt: result.createdAt,
-      prompt,
+      prompt: selectedDestination ? `${prompt}\nSelected destination: ${selectedDestination.name}` : prompt,
       route: result.route,
       mode: result.mode,
       status: "complete",
@@ -56,8 +76,20 @@ export default async function handler(request: RequestLike, response: ResponseLi
       totalGbp: result.budget?.totalGbp ?? null,
       durationMs: Date.now() - startedAt,
     };
-    await new JsonAuditRepository().append(audit);
+    await repository.append(audit);
   } catch {
+    await repository.append({
+      id: requestId,
+      createdAt: new Date().toISOString(),
+      prompt,
+      route: [],
+      mode: "demo",
+      status: "error",
+      destination: null,
+      totalGbp: null,
+      durationMs: Date.now() - startedAt,
+      error: "Plan request failed.",
+    }).catch(() => undefined);
     send({ type: "error", message: "The plan could not be completed. Check the request and try again." });
   } finally {
     response.end();

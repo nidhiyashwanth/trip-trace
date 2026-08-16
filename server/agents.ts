@@ -1,4 +1,4 @@
-import { DESTINATION_CATALOG, isCountryExcluded, toDestinationOption, type CatalogEntry } from "./catalog";
+import { DESTINATION_CATALOG, isCountryExcluded, toDestinationOption, type CatalogEntry } from "./catalog.js";
 import type {
   BudgetOutput,
   DestinationOption,

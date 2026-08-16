@@ -1,4 +1,4 @@
-import { DESTINATION_CATALOG } from "./catalog";
+import { DESTINATION_CATALOG } from "./catalog.js";
 import type { AgentId, ParsedRequest } from "../shared/types";
 
 const REGION_NAMES = ["Europe", "Asia", "Africa", "Americas", "Middle East"];

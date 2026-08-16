@@ -2,11 +2,12 @@ import "dotenv/config";
 import express from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { orchestrate } from "./orchestrator";
-import { JsonAuditRepository } from "./persistence";
-import { hasGeminiCredentials, geminiModel } from "./llm";
-import { parseRequest } from "./request-parser";
-import { assertDestinationOption } from "./validation";
+import { orchestrate } from "./orchestrator.js";
+import { buildObservabilitySnapshot } from "./observability.js";
+import { JsonAuditRepository } from "./persistence.js";
+import { hasGeminiCredentials, geminiModel } from "./llm.js";
+import { parseRequest } from "./request-parser.js";
+import { assertDestinationOption } from "./validation.js";
 import type { DestinationOption } from "../shared/types";
 import type { AuditRecord, PlanStreamEvent } from "../shared/types";
 
@@ -34,6 +35,16 @@ app.get("/api/audit", async (request, response) => {
     response.json({ records });
   } catch {
     response.status(500).json({ error: "Audit history is temporarily unavailable. Try again shortly." });
+  }
+});
+
+app.get("/api/metrics", async (request, response) => {
+  try {
+    const rawLimit = Number(request.query.limit ?? 100);
+    const records = await auditRepository.list(100);
+    response.json(buildObservabilitySnapshot(records, Number.isFinite(rawLimit) ? rawLimit : 100));
+  } catch {
+    response.status(500).json({ error: "Operational metrics are temporarily unavailable. Try again shortly." });
   }
 });
 
@@ -85,8 +96,7 @@ app.post("/api/plan", async (request, response) => {
       durationMs: Date.now() - startedAt,
     };
     await auditRepository.append(audit);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "The trip plan could not be completed.";
+  } catch {
     await auditRepository.append({
       id: requestId,
       createdAt: new Date().toISOString(),
@@ -97,7 +107,7 @@ app.post("/api/plan", async (request, response) => {
       destination: null,
       totalGbp: null,
       durationMs: Date.now() - startedAt,
-      error: message,
+      error: "Plan request failed.",
     });
     send({ type: "error", message: "The plan could not be completed. Check the request and try again." });
   } finally {

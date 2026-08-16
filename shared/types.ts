@@ -99,6 +99,27 @@ export interface AuditRecord {
   error?: string;
 }
 
+export interface ObservabilityRecord {
+  id: string;
+  createdAt: string;
+  route: AgentId[];
+  mode: AgentMode;
+  status: AuditRecord["status"];
+  destination: string | null;
+  totalGbp: number | null;
+  durationMs: number;
+}
+
+export interface ObservabilitySnapshot {
+  totalRequests: number;
+  completedRequests: number;
+  errorRequests: number;
+  averageDurationMs: number;
+  modeCounts: Record<AgentMode, number>;
+  routeCounts: Record<string, number>;
+  recent: ObservabilityRecord[];
+}
+
 export type PlanStreamEvent =
   | {
       type: "request";

@@ -4,20 +4,20 @@ import {
   runDestinationDemo,
   runItineraryDemo,
   synthesize,
-} from "./agents";
-import { parseRequest, routeRequest } from "./request-parser";
+} from "./agents.js";
+import { parseRequest, routeRequest } from "./request-parser.js";
 import {
   runGeminiBudget,
   runGeminiDestination,
   runGeminiItinerary,
   hasGeminiCredentials,
-} from "./llm";
+} from "./llm.js";
 import {
   assertBudgetOutput,
   assertDestinationOption,
   assertDestinationOutput,
   assertItineraryOutput,
-} from "./validation";
+} from "./validation.js";
 import type {
   AgentContribution,
   AgentId,

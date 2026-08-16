@@ -1,4 +1,4 @@
-import { isCountryExcluded } from "./catalog";
+import { isCountryExcluded } from "./catalog.js";
 import type {
   BudgetOutput,
   DestinationOutput,
